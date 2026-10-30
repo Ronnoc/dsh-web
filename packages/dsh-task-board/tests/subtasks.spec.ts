@@ -162,11 +162,11 @@ describe('subtask target inheritance', () => {
     expect(child.permission).toBeUndefined()
     expect(child.permissionConfirmedAt).toBeUndefined()
 
-    // ...the launch resolves the attached parent's live binding and stamp...
+    // ...the launch resolves the attached parent's live binding without borrowing the confirmation stamp...
     expect(resolveExecutionTargets(child, [parent, child])).toMatchObject({
       permission: 'danger-full-access',
-      permissionConfirmedAt: NOW,
     })
+    expect(resolveExecutionTargets(child, [parent, child]).permissionConfirmedAt).toBeUndefined()
 
     // ...and the same card detached keeps nothing to run on
     const detached = applySetParent([parent, child], 'a', null, NOW, DEFAULT_SUBTASK_DEPTH)
@@ -223,7 +223,7 @@ describe('subtask target inheritance', () => {
     expect(resolved.permissionConfirmedAt).toBeUndefined()
   })
 
-  it('operator resolving an unset subtask permission takes the ancestor confirmation', () => {
+  it('operator resolving an unset subtask permission does not take the ancestor confirmation', () => {
     // Given a subtask without its own permission under a confirmed elevated root
     const root = task('root', { permission: 'danger-full-access', permissionConfirmedAt: NOW })
     const child = task('child', { parentId: 'root' })
@@ -231,9 +231,22 @@ describe('subtask target inheritance', () => {
     // When the effective targets are resolved
     const resolved = resolveExecutionTargets(child, [root, child])
 
-    // Then the elevated permission arrives together with its confirmation stamp
+    // Then the elevated permission arrives without borrowing the confirmation stamp
     expect(resolved.permission).toBe('danger-full-access')
-    expect(resolved.permissionConfirmedAt).toBe(NOW)
+    expect(resolved.permissionConfirmedAt).toBeUndefined()
+  })
+
+  it('operator resolving a subtask with its own confirmation stamp keeps that stamp', () => {
+    // Given a subtask that was explicitly confirmed on its own card
+    const root = task('root', { permission: 'danger-full-access', permissionConfirmedAt: NOW })
+    const child = task('child', { parentId: 'root', permissionConfirmedAt: NOW + 5 })
+
+    // When the effective targets are resolved
+    const resolved = resolveExecutionTargets(child, [root, child])
+
+    // Then the child's own confirmation stamp is preserved
+    expect(resolved.permission).toBe('danger-full-access')
+    expect(resolved.permissionConfirmedAt).toBe(NOW + 5)
   })
 })
 

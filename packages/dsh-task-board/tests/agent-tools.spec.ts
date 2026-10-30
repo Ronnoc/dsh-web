@@ -733,7 +733,7 @@ describe('task_board_schedule', () => {
 
 
 describe('inherited permission bindings', () => {
-  it('user running a subtask under a confirmed parent is allowed through', async () => {
+  it('user running a subtask under a confirmed parent is refused until the subtask is confirmed', async () => {
     // Given a parent the human confirmed at danger-full-access and a subtask under it
     const live = harness({ sessionDefaultPermission: 'read-only' })
     await call(live, 'task_board_create', { title: 'parent', permission: 'danger-full-access' })
@@ -747,8 +747,14 @@ describe('inherited permission bindings', () => {
     // When the user runs the subtask
     const run = await call(live, 'task_board_run', { taskId: subtaskId })
 
-    // Then the attached parent binding carries its confirmation to the child
-    expect(run.ok).toBe(true)
+    // Then the subtask does not borrow the parent's confirmation stamp (TB-02 fix)
+    expect(run.ok).toBe(false)
+    expect(run.code).toBe('confirmation-required')
+
+    // After confirming the subtask itself, execution is allowed
+    live.host.apply('confirm-child', { kind: 'confirm-permission', taskId: subtaskId })
+    const runAfterConfirm = await call(live, 'task_board_run', { taskId: subtaskId })
+    expect(runAfterConfirm.ok).toBe(true)
   })
 
   it('user running a subtask whose inherited parent binding is unconfirmed is refused', async () => {

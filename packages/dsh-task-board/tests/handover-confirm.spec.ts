@@ -74,13 +74,17 @@ describe('handover bundle: use cases stamp and re-arm the confirmation', () => {
     expect(task.handover?.permission).toBe('danger-full-access')
   })
 
-  it('a permission or handover change clears an existing confirmation (re-arm)', () => {
+  it('a permission, handover, or content change clears an existing confirmation (re-arm)', () => {
     const base = { ...createTask({ title: 't', description: '', prompt: 'p', permission: 'workspace-write' }, NOW, 'id-1'), permissionConfirmedAt: NOW }
     const byPermission = applyUpdateTask([base], 'id-1', { permission: 'danger-full-access' }, NOW + 1)
     expect(byPermission[0].permissionConfirmedAt).toBeUndefined()
     const byHandover = applyUpdateTask([base], 'id-1', { handover: HANDOVER }, NOW + 1)
     expect(byHandover[0].permissionConfirmedAt).toBeUndefined()
-    const untouched = applyUpdateTask([base], 'id-1', { title: '新标题' }, NOW + 1)
+    const byPrompt = applyUpdateTask([base], 'id-1', { prompt: 'malicious prompt' }, NOW + 1)
+    expect(byPrompt[0].permissionConfirmedAt).toBeUndefined()
+    const byTitle = applyUpdateTask([base], 'id-1', { title: '新标题' }, NOW + 1)
+    expect(byTitle[0].permissionConfirmedAt).toBeUndefined()
+    const untouched = applyUpdateTask([base], 'id-1', { workspaceId: 'ws-2' }, NOW + 1)
     expect(untouched[0].permissionConfirmedAt).toBe(NOW)
   })
 
@@ -188,6 +192,30 @@ describe('confirmation gate: unconfirmed high-permission binding refuses executi
     ledger.applyRequest('req-create', { kind: 'create', id: 'card', input: { title: '平权卡', description: '', prompt: 'p', handover: { ...HANDOVER, permission: 'workspace-write' } } })
     const { service } = makeService(ledger, () => NOW)
     expect(() => service.apply('req-run', { kind: 'run', taskId: 'card' })).not.toThrow()
+    expect(ledger.state().tasks[0].executions).toHaveLength(1)
+    service.dispose()
+  })
+
+  it('operator updating prompt on a confirmed high-permission card re-arms confirmation gate', () => {
+    // Given a task confirmed with elevated permissions
+    const ledger = new HostTaskLedger(tempRoot(), () => NOW)
+    ledger.applyRequest('req-create', { kind: 'create', id: 'card', input: { title: '高权卡', description: '', prompt: 'harmless prompt', permission: 'danger-full-access' } })
+    const { service } = makeService(ledger, () => NOW)
+    service.apply('req-confirm', { kind: 'confirm-permission', taskId: 'card' })
+    expect(ledger.state().tasks[0].permissionConfirmedAt).toBe(NOW)
+
+    // When the prompt content is updated (preventing prompt-swap TOCTOU)
+    ledger.applyRequest('req-update', { kind: 'update', taskId: 'card', patch: { prompt: 'malicious prompt' } })
+
+    // Then the confirmation stamp is cleared and running is refused until re-confirmed
+    expect(ledger.state().tasks[0].permissionConfirmedAt).toBeUndefined()
+    expect(() => service.apply('req-run', { kind: 'run', taskId: 'card' })).toThrow(/confirmation-required/)
+    expect(ledger.state().tasks[0].executions).toEqual([])
+
+    // Re-confirming allows execution again
+    service.apply('req-reconfirm', { kind: 'confirm-permission', taskId: 'card' })
+    expect(ledger.state().tasks[0].permissionConfirmedAt).toBe(NOW)
+    expect(() => service.apply('req-rerun', { kind: 'run', taskId: 'card' })).not.toThrow()
     expect(ledger.state().tasks[0].executions).toHaveLength(1)
     service.dispose()
   })

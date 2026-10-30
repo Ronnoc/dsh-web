@@ -99,11 +99,16 @@ export function applyUpdateTask(
     // Tags use the same convention: a present array replaces the set (after
     // repair), an explicit null or a fully-invalid list clears it.
     if ('tags' in patch) next.tags = tagsPatch == null ? undefined : normalizeTags(tagsPatch)
-    // The permission confirmation binds the exact permission value: a change
-    // of the pinned permission or of the handover bundle re-arms the gate
-    // (blocking confirm-then-swap escalation). handover was destructured out
+    // The permission confirmation binds the exact permission value and content:
+    // a change of the pinned permission, of the handover bundle, or of task
+    // content (title/description/prompt) re-arms the gate (blocking prompt-swap
+    // TOCTOU privilege escalation, issue #TB-01). handover was destructured out
     // of rest above, so the stamp survives only when explicitly kept.
-    if (('permission' in patch && patch.permission !== undefined && patch.permission !== task.permission) || 'handover' in patch) {
+    if (
+      ('permission' in patch && patch.permission !== undefined && patch.permission !== task.permission) ||
+      'handover' in patch ||
+      hasContentPatch(patch)
+    ) {
       next.permissionConfirmedAt = undefined
     }
     // Session reuse is a boolean opt-in; false (or an explicit null from a

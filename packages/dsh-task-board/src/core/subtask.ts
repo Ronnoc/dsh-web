@@ -364,8 +364,11 @@ export function resolveExecutionTargets(
   const boundary = chain.findIndex(candidate => candidate.model !== undefined)
   const effortChain = boundary === -1 ? chain : chain.slice(0, boundary + 1)
   const own = effectiveTaskPermission(task)
-  // An own binding (pin or handover) keeps its own confirmation stamp; only an
-  // absent one borrows the ancestor's binding AND that ancestor's stamp.
+  // A subtask may inherit an ancestor's permission when it declares none of its
+  // own, but never borrows an ancestor's confirmation stamp (issue #TB-02:
+  // prevents child tasks minted by LLMs from bypassing the privilege
+  // confirmation gate). The confirmation stamp survives only when explicitly
+  // confirmed on the task itself.
   const owner = own === undefined
     ? chain.slice(1).find(candidate => effectiveTaskPermission(candidate) !== undefined)
     : undefined
@@ -376,6 +379,6 @@ export function resolveExecutionTargets(
     model: first('model', chain),
     reasoningEffort: first('reasoningEffort', effortChain),
     permission: own ?? (owner === undefined ? undefined : effectiveTaskPermission(owner)),
-    permissionConfirmedAt: own === undefined ? owner?.permissionConfirmedAt : task.permissionConfirmedAt,
+    permissionConfirmedAt: task.permissionConfirmedAt,
   }
 }

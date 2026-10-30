@@ -296,6 +296,27 @@ describe('the permission gate judges the card being run', () => {
     expect(() => ledger.applyRequest('run-root', { kind: 'run', taskId: 'root' }))
       .toThrow(/confirm the card's permission binding first/)
   })
+
+  it('operator running a subtask whose parent is confirmed still refuses until the subtask itself is confirmed', () => {
+    // Given a parent confirmed at danger-full-access, and a subtask that inherits the permission
+    const ledger = new HostTaskLedger(tempRoot(), () => NOW, { sessionDefaultPermission: 'read-only' })
+    ledger.applyRequest('create-root', {
+      kind: 'create', id: 'root', input: { title: 'root', description: '', prompt: 'root', permission: 'danger-full-access' },
+    })
+    ledger.applyRequest('confirm-root', { kind: 'confirm-permission', taskId: 'root' })
+    ledger.applyRequest('create-child', { kind: 'create', id: 'child', input: { title: 'child', description: '', prompt: 'child', parentId: 'root' } })
+
+    // When running the subtask without its own confirmation
+    // Then the subtask does not inherit the parent's confirmation stamp (TB-02 fix) and execution is refused
+    expect(() => ledger.applyRequest('run-child', { kind: 'run', taskId: 'child' }))
+      .toThrow(/inherits an above-default permission/)
+
+    // When the subtask itself is confirmed
+    ledger.applyRequest('confirm-child', { kind: 'confirm-permission', taskId: 'child' })
+
+    // Then execution is permitted
+    expect(() => ledger.applyRequest('run-child', { kind: 'run', taskId: 'child' })).not.toThrow()
+  })
 })
 
 describe('run groups the Host opened before the single-session shape', () => {
